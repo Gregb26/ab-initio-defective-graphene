@@ -7,6 +7,14 @@ fft_utils.py
 import math
 import numpy as np
 
+def wrap_half_open(x):
+    """
+    Fold reduced coordinates to first Brillouin zone (-1/2, 1/2].
+        x -> x \\in (-0.5, 0.5],     x = x' (mod 1).
+    Makes reduced coordinates unique and numerically stable before integer mode mapping.
+    """
+    return (x + 0.5) - np.floor(x + 0.5) - 0.5
+
 def is_fft_friendly(n: int, primes=(2, 3, 5, 7)) -> bool:
     """
     Function that checks if an integer n is FFT-friendly, i.e., if n's prime factors are all in `primes`.
