@@ -1,0 +1,26 @@
+# Python caches
+__pycache__/
+*.pyc
+
+# Packaging metadata
+*.egg-info/
+
+# IDE/editor junk
+.idea/
+.vscode/
+
+# NumPy / scientific data dumps
+*.npy
+*.npz
+*.nc
+
+# Simulation / experiment data (entire folder in repo root)
+data/
+
+# Build outputs
+build/
+dist/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+

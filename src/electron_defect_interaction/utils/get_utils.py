@@ -321,7 +321,7 @@ def get_B_volume(filepath):
 # Extracting Reciprocal Lattice Vectors          #
 ##################################################
 
-def get_G(filepath):
+def get_G_red(filepath):
     """"
     Function that extracts the reciprocal lattice vectors G in reduced coordinates from Abinit's output files.
 
