@@ -159,3 +159,33 @@ def K_from_fft_indices(ngfft, B_sc):
     K = F1[..., None] * B_sc[:, 0] + F2[..., None] * B_sc[:, 1] + F3[..., None] * B_sc[:, 2]
 
     return K
+
+def build_maps_from_ngfft(ngfft):
+    """
+    Build mapping dictionaries from reduced G indices (h,k,l) to FFT grid indices, for each of the three dimensions.
+
+    Inputs:
+    -------
+        ngftt: tuple of 3 ints:
+            The FFT grid dimensions
+    
+    Returns:
+    --------
+        map1, map2, map3: dicts:
+            Mapping dictionaries from reduced G indices (h,k,l) to FFT grid indices, for each of the three dimensions.
+
+    """    
+
+    n1, n2, n3 = ngfft
+
+    # Generate sequence of FFT indices in the unshifted FFT convention
+    q1 = (np.fft.fftfreq(n1)*n1).astype(int)
+    q2 = (np.fft.fftfreq(n2)*n2).astype(int)
+    q3 = (np.fft.fftfreq(n3)*n3).astype(int)
+
+    # Build mapping dictionaries
+    map1 = {int(h):i for i,h in enumerate(q1)}
+    map2 = {int(k):j for j,k in enumerate(q2)}
+    map3 = {int(l):m for m,l in enumerate(q3)}
+
+    return map1, map2, map3
