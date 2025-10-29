@@ -9,85 +9,94 @@ import numpy as np
 from electron_defect_interaction.utils.fft_utils import *
 
 def compute_psi_nk(
-    C_nk,      # (nband, nkpt, npw_max) complex
-    npw,       # (nkpt,) int
-    G_red,     # (nkpt, npw_max, 3) ints
-    kpts_red,  # (nkpt, 3) floats (reduced)
-    Omega,     # float, cell volume (Bohr^3)
-    Nx=None, Ny=None, Nz=None,      # FFT grid; if None, infer via grid_from_gmax
-    *, complex64=False, primes=(2,3,5,7)
+    C_nkg,  
+    nG,       
+    G_red,       
+    k_red,  
+    Omega,     
 ):
     """
-    Computes psi[n,k,x,y,z] on a uniform grid in [0,1)^3 for all bands and k.
-    Uses your build_maps_from_ngfft (index maps) and grid_from_gmax (FFT-friendly sizes).
-    Vectorized over bands per k.
+    Computes the wavefunction psi_{nk}(r) on a uniform grid in real space consistent with the number of G vectors, from
+    the planewave coefficients C_{nk}(G). 
+
+    Inputs:
+        C_nkg: (nband. nkpt, nG_max) array of complex:
+            Planewave coefficients of the wavefunctions, indexed by the reciprocal lattice vectors G.
+        nG: (nkpt, ) array of ints
+            Number of active G vectors for each kpoint.
+        G_red: (nkpt, nG_max, 3) array of ints
+            Reciprocal lattice vectors in reduced coordinates written in the "signed integer FFT convention" 
+            i.e. -Ni/2 <= G_i < N_i/2 for a grid with N_i points in the i'th direction.
+        k_red: (nkpt, 3) array of floats
+            k-points in reduced coordinates
+        Omega: float
+            Cell volume
+        
+    Returns:
+        psi_nk: (nband, nkpt, Nx, Ny, Nz) array of complex
+            Wavefunctions for all bands and all kpoints in a uniform grid in real space with N=NxNyNz points. The grid shape
+            is determined according to Abinit's double grid convention. It matches ngfft as computed by Abinit.
+        ngfft: tuple of ints:
+            FFT grid shape
     """
     
-    nband, nkpt, _, = C_nk.shape
-    dtype = np.complex64 if complex64 else np.complex128
+    nband, nkpt, _ = C_nkg.shape
 
-    # Build the FFT grid if not provided
-    if Nx is None or Ny is None or Nz is None:
+    # Build the FFT grid from the G vectors using Abinit's  convention (double grid)
+    ngfft = fft_grid_from_G_red(G_red, nG)
+    Nx, Ny, Nz = ngfft; N = np.prod(ngfft)
 
-        # Get the maximum G-vector in each direction, over all kpoints, for active planewaves
-        Gmax = np.array([0,0,0], dtype=int)
-
-        for ik in range(nkpt):
-            npw_k = npw[ik] # number of active planewaves for this k
-            Gk = np.asarray(G_red[ik, :npw_k, :], dtype=int) # (npw_k, 3) reciprocal lattice vectors for this k
-            Gmax = np.maximum(Gmax, np.max(np.abs(Gk), axis=0)) # maximum reciprocal lattice vector over all k
-        
-        Nx, Ny, Nz = grid_from_Gmax(Gmax, primes=primes) # FFT-friendly grid sizes
-
-    ngfft = (Nx, Ny, Nz)
-    N = np.prod(ngfft)
-
-    # Build mapping dictionaries from reduced G indices (h,k,l) to FFT grid indices
-    map1, map2, map3 = build_maps_from_ngfft(ngfft)
-
-    # Precompute fraction grids and per-k Bloch phases
+    # Build FFT grid
     x = np.arange(Nx)/Nx; y = np.arange(Ny)/Ny; z = np.arange(Nz)/Nz
     xx = x[:,None, None]; yy = y[None, :, None]; zz = z[None, None, :]
 
+    # Build mapping from G_red = (Gx, Gy, Gz) to FFT grid index (jx, jy, jz) to place coefficients on FFT grid
+    map_dict_x, map_dict_y, map_dict_z = map_G_to_grid(ngfft)
+
+    # Precompute phase per k
     phase = []
     for ik in range(nkpt):
-        kx, ky, kz = map(float, kpts_red[ik])
-        phase_k = np.exp(1j * 2*np.pi*(kx*xx + ky*yy + kz*zz))
-        phase.append(phase_k.astype(dtype, copy=False))
+        k = k_red[ik]
+        phase_k = np.exp(1j * 2*np.pi*(k[0]*xx + k[1]*yy + k[2]*zz))
+        phase.append(phase_k)
     
     # Compute the wavefunctions per k
-    psi = np.empty((nband, nkpt, Nx, Ny, Nz), dtype=dtype)
+    psi = np.zeros((nband, nkpt, Nx, Ny, Nz), dtype=complex)
     
-    count = 0
+    percent_marks = [10, 20, 30, 40, 50, 60, 70, 80, 90]
+    next_mark_i = 0
 
     for ik in range(nkpt):
-        npw_k = npw[ik] # number of active planewaves for this k
-        Gk = np.asarray(G_red[ik, :npw_k, :], dtype=int) # (npw_k, 3) reciprocal lattice vectors for this k
+        nG_k = nG[ik] # number of active planewaves for this k
+        Gk = G_red[ik, :nG_k, :] # (npw_k, 3) reciprocal lattice vectors for this k
 
         # Use mapping dictionaries to get FFT grid indices
-        ix = np.array([map1[int(Gk_i)] for Gk_i in Gk[:, 0]], dtype=np.int64)
-        iy = np.array([map2[int(Gk_i)] for Gk_i in Gk[:, 1]], dtype=np.int64)
-        iz = np.array([map3[int(Gk_i)] for Gk_i in Gk[:, 2]], dtype=np.int64)
+        ix = np.array([map_dict_x[int(Gk_i)] for Gk_i in Gk[:, 0]])
+        iy = np.array([map_dict_y[int(Gk_i)] for Gk_i in Gk[:, 1]])
+        iz = np.array([map_dict_z[int(Gk_i)] for Gk_i in Gk[:, 2]])
 
-        C = C_nk[:, ik, :npw_k].astype(dtype, copy=False) # (nband, npw_k) planewave coefficients for all bands at this k
+        C_ng = C_nkg[:, ik, :nG_k] # (nband, npw_k) planewave coefficients for all bands at this k
 
         # Place coefficients on the FFT grid
-        C_grid = np.zeros((nband, Nx, Ny, Nz), dtype=dtype)
-        C_grid[:, ix, iy, iz] = C
+        C_grid = np.zeros((nband, Nx, Ny, Nz), dtype=complex)
+        C_grid[:, ix, iy, iz] = C_ng
 
-        # To normalize the IFFT
-        Gx_max = np.max(np.abs(Gk[:,0])); Gy_max = np.max(np.abs(Gk[:,1])); Gz_max = np.max(np.abs(Gk[:,2]))
-        Nx_min = 2*Gx_max + 1; Ny_min = 2*Gy_max + 1; Nz_min = 2*Gz_max + 1
-        N_min = Nx_min * Ny_min * Nz_min
-
-        # Compute Bloch-periodic part u_{nk}(r_red) on the grid
-        u = np.fft.ifftn(C_grid, axes=(1,2,3)) * N # (nband, Nx, Ny, Nz)
+        # Compute Bloch-periodic part u_{nk}(r_red) = \sum_G C_{nk}(G)e^{iGr} = F^{-1}[C_nk]*N on the grid
+        u = np.fft.ifftn(C_grid, axes=(1,2,3)) * N # (nband, Nx, Ny, Nz), N undoes the normalization introduced by Numpys IFFT
         
         # Compute psi = u * exp(ik.r) / sqrt(Omega)
-        psi[:, ik, ...] = (u * phase[ik]) / np.sqrt(float(Omega))
-        
-        count += 1
-        print("Computed ", count, "out of", nkpt, "k-points")
+        psi[:, ik, ...] = (u * phase[ik]) / np.sqrt(Omega)
+
+        p = (ik + 1) / nkpt * 100
+        if next_mark_i < len(percent_marks) and p >= percent_marks[next_mark_i]:
+            print(f"Computed {percent_marks[next_mark_i]}% of wavefunctions, ({ik+1}/{nkpt}) kpoints")
+            next_mark_i += 1
+
+    # Sanity check, wavefunctions are nornmalized
+    norm = np.sum(np.abs(psi)**2, axis=(2,3,4)) * (Omega / N)
+    assert np.allclose(norm, 1.0), 'Wavefunctions should be normalized!'
+
+    print('Done! Wavefunctions are normalized.')
 
     return psi, ngfft
 
