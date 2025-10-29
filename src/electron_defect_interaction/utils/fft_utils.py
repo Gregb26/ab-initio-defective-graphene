@@ -111,67 +111,35 @@ def fft_grid_from_G_red(G_red, nG, primes=(2, 3, 5)):
             next_good_fft_len((2*Gy+1), primes, force_odd=False),
             next_good_fft_len((2*Gz+1), primes, force_odd=False))
 
-def modes_to_fft_indices(m_signed, ngfft):
-    """
-    Converts signed FFT mode indices in [-n/2, ..., n/2-1] to unsigned FFT grid indices in [0..n-1] for numpy array indexing.
-        In mathematics, Fourier modes are usually represented in the signed format: m = (m1, m2, m3) with mi in [-ni/2, ..., ni/2-1], symmetric about 0
-        In numpy FFTs, the array indices are in the unsigned format: i = (i1, i2, i3) with mi in [0, ..., ni-1].
-    
-    Inputs:
-    -------
-        m_signed : (N, 3) numpy.ndarray
-            Array of signed FFT mode indices.
-        ngfft : tuple of int
-            Number of FFT grid points along each direction (n1, n2, n3).
-    
-    Returns:
-    -------
-        i1, i2, i3 : numpy.ndarray
-            Arrays of unsigned FFT grid indices corresponding to the input signed mode indices.
-    """
 
-    n1, n2, n3 = map(int, ngfft)
-    m = m_signed.copy()
-    
-    # ensure +n/2 → -n/2 for even sizes (choose negative representative)
-    if n1 % 2 == 0: m[:,0][m[:,0] ==  n1//2] = -n1//2
-    if n2 % 2 == 0: m[:,1][m[:,1] ==  n2//2] = -n2//2
-    if n3 % 2 == 0: m[:,2][m[:,2] ==  n3//2] = -n3//2
-
-    # convert to unsigned indices
-    i1 = (m[:,0] % n1); i2 = (m[:,1] % n2); i3 = (m[:,2] % n3)
-    return i1, i2, i3
-
-def map_signed_to_grid(ngfft):
+def map_G_to_grid(ngfft):
     """
     Build mapping from reciprocal lattice vectors G in reduced coordinates, written in the signed mode convention, to an array index.
     This is the mapping G -> FFT grid index. The mapping is as follows:
         if G_i >= 0 then j_i = G_i
         if G_i < 0 then j_i = G_i + N_i, where N_i is the number of points in the grid.
-    
 
     Inputs:
-    -------
         ngftt: tuple of 3 ints:
             The FFT grid dimensions
     
     Returns:
-    --------
-        map1, map2, map3: dicts:
-            Mapping dictionaries from reduced G indices (h,k,l) to FFT grid indices, for each of the three dimensions.
+        map_dict_x, map_dict_y, map_dict: dicts:
+            Mapping dictionaries from reduced G indices (Gx, Gy, Gz) to FFT grid indices, for each of the three dimensions.
+            map_dict_i[G_i] = j_i.
 
     """    
 
-    n1, n2, n3 = ngfft
+    Nx, Ny, Nz = ngfft
 
-    # Generate sequence of FFT indices in the unshifted FFT convention
-    q1 = (np.fft.fftfreq(n1)*n1).astype(int)
-    q2 = (np.fft.fftfreq(n2)*n2).astype(int)
-    q3 = (np.fft.fftfreq(n3)*n3).astype(int)
+    # Mapping is given by np.fft.fftfreq
+    map_x = (np.fft.fftfreq(Nx)*Nx).astype(int)
+    map_y = (np.fft.fftfreq(Ny)*Ny).astype(int)
+    map_z = (np.fft.fftfreq(Nz)*Nz).astype(int)
 
-    # Build mapping dictionaries
-    map1 = {int(h):i for i,h in enumerate(q1)}
-    map2 = {int(k):j for j,k in enumerate(q2)}
-    map3 = {int(l):m for m,l in enumerate(q3)}
+    # Build mapping dictionaries: map_dict_i[G_i] = j_i
+    map_dict_x = {G_x:j_x for j_x,G_x in enumerate(map_x)}
+    map_dict_y = {G_y:j_y for j_y,G_y in enumerate(map_y)}
+    map_dict_z = {G_z:j_z for j_z,G_z in enumerate(map_z)}
 
-    return map1, map2, map3
+    return map_dict_x, map_dict_y, map_dict_z
