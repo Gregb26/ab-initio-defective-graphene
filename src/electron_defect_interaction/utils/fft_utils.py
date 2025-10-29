@@ -142,34 +142,13 @@ def modes_to_fft_indices(m_signed, ngfft):
     i1 = (m[:,0] % n1); i2 = (m[:,1] % n2); i3 = (m[:,2] % n3)
     return i1, i2, i3
 
-def K_from_fft_indices(ngfft, B_sc):
+def map_signed_to_grid(ngfft):
     """
-    Function that computes the reciprocal lattice vectors K from the FFT grid indices in cartresian coordinates.
-    K = iB1 + jB2 + kB3
-    where i, j, k are the FFT grid indices and the Bi's are the primitive reciprocal lattice vectors of the supercell.
-
-    Inputs:
-    -------
-    ngfft : tuple of int
-        Number of FFT grid points along each direction (n1, n2, n3).
-    B_sc : (3, 3) numpy.ndarray
-        Primitive reciprocal lattice vectors of the supercell in the columns of the array.
-    """
-
-    n1, n2, n3 = ngfft
-    # Fractional frequencies
-    f1 = np.fft.fftfreq(n1); f2 = np.fft.fftfreq(n2); f3 = np.fft.fftfreq(n3)
+    Build mapping from reciprocal lattice vectors G in reduced coordinates, written in the signed mode convention, to an array index.
+    This is the mapping G -> FFT grid index. The mapping is as follows:
+        if G_i >= 0 then j_i = G_i
+        if G_i < 0 then j_i = G_i + N_i, where N_i is the number of points in the grid.
     
-    # Meshgrid in fractional coordinates
-    F1, F2, F3 = np.meshgrid(f1, f2, f3, indexing='ij')
-
-    K = F1[..., None] * B_sc[:, 0] + F2[..., None] * B_sc[:, 1] + F3[..., None] * B_sc[:, 2]
-
-    return K
-
-def build_maps_from_ngfft(ngfft):
-    """
-    Build mapping dictionaries from reduced G indices (h,k,l) to FFT grid indices, for each of the three dimensions.
 
     Inputs:
     -------
