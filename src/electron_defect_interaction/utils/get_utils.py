@@ -4,14 +4,7 @@ get.py
 Helper functions that extract useful parameters from Abinit's output files for further postprocessing.
 
 Currently supported quantities are:
-    - C_nk: coefficients of the planewave basis set (from WFK.nc file),
-    - KB: Kleinman-Bylander coefficients and projectors (from PSPS.nc file),
-    - POT: Total local Kohn-Sham potential (V_H + V_XC + V_PSPS) (from POT.nc file),
-    - KPT: kpoints in reduced coordinates (from WFK.nc file),
-    - A: Direct primtive lattice vectors (from WFK.nc file),
-    - B: Reciprocal primitive lattice vectors (from WFK.nc file),
-    - G: Reciprocal lattice vectors in reduced coordinates (from WFK.nc file),
-    - NPW: Number of active planewaves (from WFK.nc file),
+    TODO
 
 The keyword "iomode 3" is necessary to output the files in netCDF format (.nc)
 """
@@ -19,10 +12,6 @@ The keyword "iomode 3" is necessary to output the files in netCDF format (.nc)
 # imports
 from netCDF4 import Dataset
 import numpy as np
-
-##################################################
-# Extracting planewave basis coefficients        #
-##################################################
 
 def get_C_nk(filepath):
     """
@@ -67,64 +56,9 @@ def get_C_nk(filepath):
 
     return C_nk, npw
 
-##################################################
-# Extracting KB coefficients and projectors      #
-##################################################
-
-def get_KB(filepath):
-    """
-    Function that reads the Kleinman-Bylander (KB) coefficients and projectors from pseudopotentials and stores them for post-processing
-    (computing non-local matrix elements).
-
-    Inputs
-    ------
-        Filepath: str:
-            Filepath of the pseupopotential output file. Must be a *PSPS.nc file.
-
-    Returns
-    -------
-        D: [nkb] array:
-            KB coefficients, nkb is the number of channels.
-
-        B_q: [nqpt, nkb] array:
-            KB prokectors, nqpt is the qpoint index, e.g. [q, i] gives B_i(q).
-    """
-
-    # read the file with netCDF4
-    psps = Dataset(filepath, 'r')
-
-    # extract coefficients and projectors
-    D = psps.variables["ekb"][0] # [nkb
-    B = psps.variables["ffspl"][0] # [nkb, 0:value, 1:derivative, nqpt]
-
-    nkb = B.shape[0]  # number of KB projectors
-    nqpt = B.shape[2]  # number of for which B_i(q) is evaluated
-
-    # arrange the projectors in an intuitive way
-    B_q = np.zeros((nqpt, nkb ), dtype=complex)
-    for i in range(nkb):
-        B_q[:, i] = B[i, 0, :]
-
-    # printing stuff
-    indlmn = np.array(psps.variables['indlmn'][0])
-    for i in range(nkb):
-        l = indlmn[i, 0]
-        n_proj = indlmn[i, 2]
-        D_i = D[i]
-        B_i = B_q[:, i]
-        print(f"Coefficient {i}: l = {l}, n_proj = {n_proj}, D = {D_i}")
-        print(f"Projector {i}: l = {l}, n_proj = {n_proj}, B = {B_i}")
-
-    return D, B_q
-
-##################################################
-# Extracting Local Kohn-Sham Potential           #
-##################################################
-
-def get_POT(filepath, Omega_sc, subtract_mean=True, spin_channel=0):
+def get_pot(filepath, subtract_mean=True, spin_channel=0):
     """
     Load ABINIT POT.nc 'vtrial' (local KS potential), return V(r) on the FFT grid
-    and its Fourier transform V(G) with the normalization used for matrix elements.
 
     Inputs
     -------
@@ -147,9 +81,6 @@ def get_POT(filepath, Omega_sc, subtract_mean=True, spin_channel=0):
     -------
         V_r: [n1,n2,n3] array of floats:
             Total local Kohn-Sham potential in real space.
-
-        V_G: [n1,n2,n3] array of complex:
-            Total local Kohn-Sham potential in reciprocal space.
 
         ngfft: tuple (n1,n2,n3):
             FFT grid size.
@@ -182,70 +113,33 @@ def get_POT(filepath, Omega_sc, subtract_mean=True, spin_channel=0):
     if subtract_mean:
         V = V - V.mean()
 
-    # NumPy forward FFT divides by N; multiply by Ω_sc / Ω_uc
-    V_G = np.fft.fftn(V, norm="forward") * Omega_sc 
+    return V, ngfft
 
-    return V, V_G, ngfft
+def get_psps(path):
+    
+    with Dataset(path, "r") as nc:
 
-##################################################
-# Extracting Kpoint Grid                         #
-##################################################
+        # Extract KB energies
+        E_ai = np.array(nc.variables["ekb"][:]) # (ntypat, nkb_max)
+        # Extract indices
+        indlmn = np.array(nc.variables["indlmn"][:])  # (ntypat, nkb_max, 6)
+        # Extract cubic spline coefficients for radial form factors
+        ffspl = np.array(nc.variables["ffspl"][:]) # (ntypat, nkb_max, 2, mqgrid_ff)
+        # Extract q grid on which to interpolate radial form factors
+        qgrid_ff = np.array(nc.variables["qgrid_ff"][:]) # (mqgrid_ff,)
 
-def get_KPT(filepath):
-    """
-    Function that extracts the kpoint grid in reduced coordinates from Abinit's output files.
+        # Interpolate radial form factors
+        ffspl_values, ffspl_derivs = ffspl[:, :, 0, :], ffspl[:, :, 1, :] # (ntypat, nkb_max, mqgrid_ff)
 
-    Inputs
-    ------
-     filepath: str:
-        Filepath of the output file.
+        from scipy.interpolate import CubicHermiteSpline
+        F = CubicHermiteSpline(qgrid_ff, ffspl_values, ffspl_derivs, axis=-1) # CubicHermiteSpline object
 
-    Returns
-    -------
-        kpts_red [nkpts, 3] array of floats:
-            Kpoints in reduced coordinates.
-    """
+        ntypat, nkb_max = E_ai.shape
 
-    with Dataset(filepath, "r") as nc:
-        nc.set_auto_mask(False)
-        var = nc.variables["reduced_coordinates_of_kpoints"]
+        qmin, qmax = float(qgrid_ff[0]), float(qgrid_ff[-1])  # 0.0, ~3.416...
 
-        kpts_red = np.asarray(var)
 
-    return kpts_red
-
-##################################################
-# Extracting Kohn-Sham Eigenvalues               #
-##################################################
-
-def get_EIG(filepath):
-    """"
-    Function that extracts the Kohn-Sham eigenvalues from Abinit's output files.
-
-    Inputs
-    ------
-        filepath: str:
-            Filepath containined eigenvalues.
-
-    Returns
-    -------
-        eigs: [nabnd, nkpts] array of floats:
-            Kohn-Sham eigenvalues at each kpoint.
-    """
-
-    # Read file with netCDF4
-    with Dataset(filepath, "r") as nc:
-        nc.set_auto_mask(False)
-        var = nc.variables["Eigenvalues"][:] # shape [nspin, nkpt, nband]
-
-        eigs = np.asarray(var, dtype=np.float64)
-        eigs = np.transpose(np.squeeze(eigs), (1,0)) # shape [nband, nkpt]
-
-    return eigs
-
-##################################################
-# Extracting Direct Primitive lattice vectors    #
-##################################################
+    return E_ai, F, indlmn, ntypat, nkb_max, qmin, qmax
 
 def get_A_volume(filepath):
     """
@@ -274,11 +168,6 @@ def get_A_volume(filepath):
     Omega = np.abs(np.linalg.det(A))
 
     return A, Omega
-
-
-##################################################
-# Extracting Primitive Reciprocal Lattice Vectors#
-##################################################
 
 def get_B_volume(filepath):
     """
@@ -317,10 +206,6 @@ def get_B_volume(filepath):
 
     return B, Omega_G
 
-##################################################
-# Extracting Reciprocal Lattice Vectors          #
-##################################################
-
 def get_G_red(filepath):
     """"
     Function that extracts the reciprocal lattice vectors G in reduced coordinates from Abinit's output files.
@@ -342,32 +227,6 @@ def get_G_red(filepath):
 
         G_red = np.asarray(var, dtype=np.int64) # shape (nkpt, npw_k, 3)
     return G_red
-
-def get_npw(filepath):
-    """
-    Function that extracts the numer of active planewaves for each kpoint from Abinit's output files.
-
-    Inputs
-    ------
-        filepath: str:
-            File containing the information.
-
-    Returns
-    -------
-        npw_k: [nkpt] array of ints:
-            Number of active planewaves for each kpoint.
-    """
-
-    # Read file with netCDF4
-    with Dataset(filepath, "r") as nc:
-        nc.set_auto_mask(False)
-        var = nc["number_of_coefficients"][:]
-
-        npw_k = np.asarray(var, dtype=np.int64) # shape (nkpt)
-
-    return npw_k
-
-filepath = "../data/graphene/pristine_uc/abinit/20x20x1_gs/graphene_p_uc_gso_DS2_GSR.nc"
 
 def get_band(filepath):
     """
@@ -407,5 +266,93 @@ def get_band(filepath):
         fermi_energy = float(fermi_energy) # you can guess the shape
 
     return kpt_path, eigs, fermi_energy
+
+def get_eigenvalues(filepath, shift_Fermi=True):
+    """
+    Function that reads the Kohn-Sham eigenvalues computed by Abinit and stores them in an array for postprocessing.
+
+    Inputs:
+    -------
+        filepath: str:
+            Filepath of the eigenvalues output file computed by Abinit. Must be a WFK.nc file.
+
+    Returns:
+    -------
+        eigenvalues: [nband, nkpt] array:
+            Array with the Kohn-Sham eigenvalues. nband is the band index and nkpt is the kpoint index.
+            For example eigenvalues[0,0] gives the eigenvalue of the first band at the first kpoint.
+    """
+
+    with Dataset(filepath, mode='r') as nc:
+        nc.set_auto_mask(False)
+        vals = nc["eigenvalues"][:]
+        if shift_Fermi:
+            fermi_level = nc["fermi_energy"][:]
+            vals -= fermi_level
+
+        eigenvalues = np.transpose(np.squeeze(np.asarray(vals))) # (nband, nkpt)
+
+    return eigenvalues
+
+def get_kpt_red(filepath):
+    """
+    Function that extracts the kpoint grid in reduced coordinates from Abinit's output files.
+
+    Inputs
+    ------
+     filepath: str:
+        Filepath of the output file.
+
+    Returns
+    -------
+        kpts_red [nkpts, 3] array of floats:
+            Kpoints in reduced coordinates.
+    """
+
+    with Dataset(filepath, "r") as nc:
+        nc.set_auto_mask(False)
+        var = nc.variables["reduced_coordinates_of_kpoints"]
+
+        kpts_red = np.asarray(var)
+
+    return kpts_red
+
+def get_x_red(filepath):
+    """
+    Function that extracts the reduced coordinates of the atoms in the cell from Abinit's outputfiles
+
+    Inputs
+    ------
+        filepath: str:
+            Filepath of the output file containing reduced coordinates of atoms.
+
+    Outputs
+    -------
+        x_red: [natom, 3] array of floats:
+            Array containing the reduced coordinates of the atoms.
+    """
+    with Dataset(filepath, "r") as nc:
+        nc.set_auto_mask(False)
+        var = nc["reduced_atom_positions"][:]
+
+        x_red = np.asarray(var, dtype=np.float64)
+
+    return x_red
+
+def get_typat(filepath):
+    """
+    Function that extracts the atom types present in the cell
+
+    Inputs:
+        filepath: str
+            Filepath of the Abinit output file containing the atom types (WFK.nc works)
+    Outputs: 
+        typat: (natom, ) of ints
+            typat[i] is the atom type of atom i 
+    """
+    with Dataset(filepath, "r") as nc:
+        typat = np.asarray(nc.variables["atom_species"][:]).astype(int)
+
+    return typat
 
 

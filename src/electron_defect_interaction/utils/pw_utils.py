@@ -7,98 +7,6 @@ pw_utils.py
 import numpy as np
 from netCDF4 import Dataset
 
-def get_C_nk(filepath):
-    """
-    Function that reads the coefficients of wavefunctions computed by DFT using Abinit, and stores them
-    into an array for post-processing.
-
-    Inputs
-    ------
-        filepath: str:
-            Filepath of the wavefunction output file computed by Abinit. Must be a WFK.nc file.
-
-    Returns
-    -------
-        C_nk: [nband, nkpt, npw_k] array:
-            Array with the wavefunction coefficients. nband is the band index, npkt is the kpoint index and npwk is the coefficients index.
-            For example C_nk[0,0, :] gives the npw_k coefficients of the wavefunction for the first band, at the first kpoint.
-        npw: [npw] array of ints:
-            Number of active planewaves for a given kpoint.
-    """
-
-    # Read file with netCDF4
-    with Dataset(filepath, 'r') as nc:
-        nc.set_auto_mask(False)
-        var = nc["coefficients_of_wavefunctions"][:] # shape (nspin, nkpt, nband, npw_k, nsppol, 2)
-        npw = np.array(nc["number_of_coefficients"][:],dtype=int)
-      
-    # Unmask
-    if np.ma.isMaskedArray(var):
-        var = var.filled(0.0)
-    arr = np.asarray(var)
-
-    # Squeeze singleton spin/spinor axes
-    arr = np.squeeze(arr) # shape (nkpt, nband, npw_k, 2)
-
-    # Extract real and imaginary parts of the coefficients
-    real = arr[..., 0]
-    imag = arr[..., 1]
-
-    # Reconstruct coefficients
-    coeffs = real + 1j*imag
-    C_nk = np.transpose(coeffs, (1,0,2)) # shape (nband, nkpt, npw_k)
-
-    return C_nk, npw
-
-def get_eigenvalues(filepath, shift_Fermi=True):
-    """
-    Function that reads the Kohn-Sham eigenvalues computed by Abinit and stores them in an array for postprocessing.
-
-    Inputs:
-    -------
-        filepath: str:
-            Filepath of the eigenvalues output file computed by Abinit. Must be a WFK.nc file.
-
-    Returns:
-    -------
-        eigenvalues: [nband, nkpt] array:
-            Array with the Kohn-Sham eigenvalues. nband is the band index and nkpt is the kpoint index.
-            For example eigenvalues[0,0] gives the eigenvalue of the first band at the first kpoint.
-    """
-
-    with Dataset(filepath, mode='r') as nc:
-        nc.set_auto_mask(False)
-        vals = nc["eigenvalues"][:]
-        if shift_Fermi:
-            fermi_level = nc["fermi_energy"][:]
-            vals -= fermi_level
-
-        eigenvalues = np.transpose(np.squeeze(np.asarray(vals))) # (nband, nkpt)
-
-    return eigenvalues
-
-def get_kpt_red(filepath):
-    """
-    Function that extracts the kpoint grid in reduced coordinates from Abinit's output files.
-
-    Inputs
-    ------
-     filepath: str:
-        Filepath of the output file.
-
-    Returns
-    -------
-        kpts_red [nkpts, 3] array of floats:
-            Kpoints in reduced coordinates.
-    """
-
-    with Dataset(filepath, "r") as nc:
-        nc.set_auto_mask(False)
-        var = nc.variables["reduced_coordinates_of_kpoints"]
-
-        kpts_red = np.asarray(var)
-
-    return kpts_red
 
 def build_maps_from_ngfft(ngfft):
     """
@@ -168,3 +76,18 @@ def make_Cdicts_for_k(C_nk, G_red_uc, npw, ik, band_indices):
         Cdicts.append(d)
 
     return Cdicts  # list in same order as band_indices
+
+def mask_invalid_G(nG):
+    """
+    Returns a boolean mask that selects only the active recripocal lattice vector G for each k-point.
+
+    Inputs:
+        nG: (nkpt, ) array of int
+            Number of active G for each kpoint
+    """
+
+    nG_max = np.max(nG)
+    id_G_valid = np.arange(nG_max)[None, :] # (1, nG_max)
+    keep = id_G_valid < nG[:, None] # (nkpt, nG_max)
+
+    return keep, nG_max
