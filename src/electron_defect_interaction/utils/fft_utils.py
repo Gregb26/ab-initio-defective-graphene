@@ -7,17 +7,11 @@ fft_utils.py
 import math
 import numpy as np
 
-def wrap_half_open(x):
-    """
-    Fold reduced coordinates to first Brillouin zone (-1/2, 1/2].
-        x -> x \\in (-0.5, 0.5],     x = x' (mod 1).
-    Makes reduced coordinates unique and numerically stable before integer mode mapping.
-    """
-    return (x + 0.5) - np.floor(x + 0.5) - 0.5
+from electron_defect_interaction.utils.pw_utils import mask_invalid_G
 
 def is_fft_friendly(n: int, primes=(2, 3, 5, 7)) -> bool:
     """
-    Function that checks if an integer n is FFT-friendly, i.e., if n's prime factors are all in `primes`.
+    Function that checks if an integer n is FFT-friendly, i.e., if n factors are all in `primes`.
 
     Inputs:
     -------
@@ -36,8 +30,11 @@ def is_fft_friendly(n: int, primes=(2, 3, 5, 7)) -> bool:
         return False
     
     for p in primes:
+        # if n is divisible by p, divide by p 
         while n % p == 0:
-            n //= p
+            n = int(n/p)
+        
+        # if n factors only 'primes' remainder is 1 after all divisions
         if n == 1:          
             return True
         
@@ -70,39 +67,49 @@ def next_good_fft_len(n_min: int, primes=(2, 3, 5, 7), force_odd=False) -> int:
     if is_fft_friendly(n, primes):
         return n
 
+    # add to n until it is fft friendly
     step = 2 if force_odd else 1
     while True:
         n += step
         if is_fft_friendly(n, primes):
             return n
 
-def grid_from_Gmax(Gmax, primes=(2, 3, 5, 7)):
+def fft_grid_from_G_red(G_red, nG, primes=(2, 3, 5)):
     """
-    Given the maximum reciprocal lattice vector Gmax, return the FFT grid sizes Ni >= 2*Gmax_i+1, for i=x,y,z.
+
 
     Inputs:
     -------
-        Gmax : array-like of float
-            Maximum reciprocal lattice vector components (Gx, Gy, Gz).
+        G_red: (nkpw, nG_max, 3) array of ints
+            Reciprocal lattice vectors in reduced coordinates for all kpoints
+        nG: (nkpt, ) array of ints
+            Number of active G_red for each kpoint.
         primes : tuple of int, optional
-            Tuple of allowed prime factors. Default is (2, 3, 5, 7).
-
+            Tuple of allowed prime factors. Default is (2, 3, 5).
     Returns:
     -------
-        tuple of int
-            FFT grid sizes (Nx, Ny, Nz).
+        ngfft: tuple of int
+            Minimal FFT double grid sizes (Nx, Ny, Nz) on which to place the G vectors to avoid aliasing.
     """
 
-    # Round up Gmax components to nearest integer
-    Gx, Gy, Gz = [int(math.ceil(abs(int(g)))) for g in Gmax]
+    # Get a boolean mask to remove invalid G vectors
 
-    # Target grid size function
-    def target(g):
-        return 2*g + 1
-    
-    return (next_good_fft_len(target(Gx), primes, force_odd=True),
-            next_good_fft_len(target(Gy), primes, force_odd=True),
-            next_good_fft_len(target(Gz), primes, force_odd=True))
+    keep, nG_max = mask_invalid_G(nG)
+    G_red = np.where(keep[..., np.newaxis], G_red, 0.0) # set invalid G's to zero to get correct min and max values
+
+    # Round up Gmax components to nearest integer
+    Gmax = np.max(G_red, axis=(0,1))
+    Gmin = np.min(G_red, axis=(0,1))
+
+    # Nyquist requires at least Gmax - Gmin + 1 points to place G on a grid without aliasing
+    dG = Gmax - Gmin
+    Gx, Gy, Gz = tuple(dG)
+
+    # Place coefficients on a double grid to avoid aliasing during products or convolution of wavefunctions
+    # Round up to next fft friendly integer for fft speed (integers that only factors into 'primes')
+    return (next_good_fft_len((2*Gx+1), primes, force_odd=False),
+            next_good_fft_len((2*Gy+1), primes, force_odd=False),
+            next_good_fft_len((2*Gz+1), primes, force_odd=False))
 
 def modes_to_fft_indices(m_signed, ngfft):
     """
