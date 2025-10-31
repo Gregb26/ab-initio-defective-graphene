@@ -115,31 +115,87 @@ def get_pot(filepath, subtract_mean=True, spin_channel=0):
 
     return V, ngfft
 
-def get_psps(path):
+def get_psps(psp8):
+    """
+    Reads input .psp8 input file to extract KB energies and radial form factors. The radial form factor are read from
+    the input file in real space and should be transformed to q space via a Hankel transform for non-local matrix elements
+    evaluation. Currentely, only .psp8 files with atoms with a maximum orbital quantum number l=1 are supported. 
+
+    Input:
+        psp8: str
+            Path to input pseudopotential file. MUST BE A .PSP8 file.
+
+    Outpus:
+        ekb_li: (lmax+1, imax+1) array of floats:
+            KB energies.
+        fr_li: (lmax+1, imax+1, mmax) array of floats
+            Radial form factors on a 1d grid of size mmax in real space.
+        
+    """
+    def ffloat(s):
+        """
+        Convert Fortran's exponential "D" with Python's exponential "E".
+        """
+        return float(s.replace("D", "E"))
     
-    with Dataset(path, "r") as nc:
+    from pathlib import Path
 
-        # Extract KB energies
-        E_ai = np.array(nc.variables["ekb"][:]) # (ntypat, nkb_max)
-        # Extract indices
-        indlmn = np.array(nc.variables["indlmn"][:])  # (ntypat, nkb_max, 6)
-        # Extract cubic spline coefficients for radial form factors
-        ffspl = np.array(nc.variables["ffspl"][:]) # (ntypat, nkb_max, 2, mqgrid_ff)
-        # Extract q grid on which to interpolate radial form factors
-        qgrid_ff = np.array(nc.variables["qgrid_ff"][:]) # (mqgrid_ff,)
+    with Path(psp8).open("r") as f:
+        lines = [line.rstrip("\n") for line in f]
 
-        # Interpolate radial form factors
-        ffspl_values, ffspl_derivs = ffspl[:, :, 0, :], ffspl[:, :, 1, :] # (ntypat, nkb_max, mqgrid_ff)
+        # Header
+        # First line is title
+        title = lines[0]
+        print(".psp8 file: ", title)
+        # Second line is zatom, zion and date
+        parts = lines[1].split()
+        zatom, zion, pspd = map(float, parts[:3])
 
-        from scipy.interpolate import CubicHermiteSpline
-        F = CubicHermiteSpline(qgrid_ff, ffspl_values, ffspl_derivs, axis=-1) # CubicHermiteSpline object
+        # Third line is pspcod, pspxc, lmax, lloc, mmax, r2well
+        parts = lines[2].split()
+        pspcod, pspxc, lmax, lloc, mmax, r2well = map(int, parts[:6])
 
-        ntypat, nkb_max = E_ai.shape
+        # Fourth line is rchrg, fchrg, qchrg
+        parts = lines[3].split()
+        rchrg, fchrg, qchrg = map(float, parts[:3])
 
-        qmin, qmax = float(qgrid_ff[0]), float(qgrid_ff[-1])  # 0.0, ~3.416...
+        # Fifth channel is nproj, i.e. how many projector channels per l for l = 0, ..., lmax
+        parts = lines[4].split()
+        nproj_l = list(map(int, parts[:5]))
 
+        proj_li = []
+        for l, n in enumerate(nproj_l):
+            for i in range(n):
+                proj_li.append((l,i)) # (angular momentum l, projector index i)
 
-    return E_ai, F, indlmn, ntypat, nkb_max, qmin, qmax
+        # First data block
+        # First line is l=0 and ekb_ii for i=0,1
+        parts = lines[6].split()
+        assert int(parts[0]) == 0
+        ekbl0 = list(map(ffloat, parts[1:3]))
+        # Data: first column is radial grid index, 2nd is radial grid meshpoint, 3rd i=0 KB projector for l=0, 4th is i=1 KB projector for l=0
+        rgrid0 = np.zeros(mmax); fl0i0 = np.zeros(mmax); fl0i1 = np.zeros(mmax)
+        for k in range(mmax):
+            parts = lines[7+k].split()
+            rgrid0[k], fl0i0[k], fl0i1[k] = map(ffloat, parts[1:4])
+
+        # Second data block
+        # First line is l=1 and ekb_ii for i=0,1
+        parts = lines[7+mmax].split()
+        assert int(parts[0]) == 1
+        ekbl1 = list(map(ffloat, parts[1:3]))
+        # Data: first column is radial grid index, 2nd is radial grid meshpoint, 3rd i=0 KB projector for l=1, 4th is i=1 KB projector for l=1
+        rgrid1 = np.zeros(mmax); fl1i0 = np.zeros(mmax); fl1i1 = np.zeros(mmax)
+        for k in range(mmax):
+            parts = lines[8 + mmax + k].split()
+            rgrid1[k], fl1i0[k], fl1i1[k] = map(ffloat, parts[1:4])
+        
+        assert np.allclose(rgrid0, rgrid1), 'rgrids must be the same'
+
+        ekb_li = np.array([[ekbl0[0], ekbl0[1]], [ekbl1[0], ekbl1[1]]])
+        fr_li = np.array([[fl0i0, fl0i1],[fl1i0, fl1i1]])
+    
+    return ekb_li, fr_li, rgrid0
 
 def get_A_volume(filepath):
     """
@@ -267,7 +323,7 @@ def get_band(filepath):
 
     return kpt_path, eigs, fermi_energy
 
-def get_eigenvalues(filepath, shift_Fermi=True):
+def get_eigenvalues(filepath, shift_Fermi=False):
     """
     Function that reads the Kohn-Sham eigenvalues computed by Abinit and stores them in an array for postprocessing.
 
@@ -286,8 +342,10 @@ def get_eigenvalues(filepath, shift_Fermi=True):
     with Dataset(filepath, mode='r') as nc:
         nc.set_auto_mask(False)
         vals = nc["eigenvalues"][:]
+        fermi_level = nc["fermi_energy"][:]
+
         if shift_Fermi:
-            fermi_level = nc["fermi_energy"][:]
+            
             vals -= fermi_level
 
         eigenvalues = np.transpose(np.squeeze(np.asarray(vals))) # (nband, nkpt)
@@ -355,4 +413,12 @@ def get_typat(filepath):
 
     return typat
 
+def get_ecut(path):
+    """
+    Get the ecut used in the calculation from WFK.nc file.
+    """
+    with Dataset(path, 'r') as nc:
+        ecut = np.asarray(nc.variables["ecut_eff"][:]).astype(float)
+
+    return ecut
 
