@@ -1,13 +1,12 @@
 """
 fft_utils.py
-
-    Python modules that contains helper functions for fast fourier transforms (FFT) operations.
+    Python modules that contains helper functions FFT operations.
 """
 
 import math
 import numpy as np
 
-from electron_defect_interaction.utils.pw_utils import mask_invalid_G
+from electron_defect_interaction.utils.planewaves import mask_invalid_G
 
 def is_fft_friendly(n: int, primes=(2, 3, 5, 7)) -> bool:
     """
@@ -112,7 +111,7 @@ def fft_grid_from_G_red(G_red, nG, primes=(2, 3, 5)):
             next_good_fft_len((2*Gz+1), primes, force_odd=False))
 
 
-def map_G_to_grid(ngfft):
+def map_G_to_fft_grid(ngfft):
     """
     Build mapping from reciprocal lattice vectors G in reduced coordinates, written in the signed mode convention, to an array index.
     This is the mapping G -> FFT grid index. The mapping is as follows:
