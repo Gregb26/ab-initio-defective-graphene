@@ -9,7 +9,7 @@ Abinit run.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from electron_defect_interaction.utils.get import get_band
+from electron_defect_interaction.utils.get_utils import get_band
 
 # Useful conversion factors
 bohr_to_ang = 0.529177210903
