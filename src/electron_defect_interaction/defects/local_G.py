@@ -27,7 +27,7 @@ def compute_M_L_G(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, bands,
     # Get necessary unit cell quantities
     C_nkg, nG = get_C_nk(uc_wfk_path) # planewave coefficients (nband, nkpt, nG_max) and active G per k (nkpt,)
     G_red = get_G_red(uc_wfk_path) # reciprocal lattice vectors in reduced coords of the unit cell (nkpt, nG_max, 3)
-    k_red = get_kpt_red(uc_wfk_path) # kpoints in reduced coords of the unit cell (nkpt, 3)
+    k_red = get_k_red(uc_wfk_path) # kpoints in reduced coords of the unit cell (nkpt, 3)
     A_uc, _ = get_A_volume(uc_wfk_path) # primitive lattice vectors of the unit cell A[:, i] = a_i
     _, nkpt, _ = C_nkg.shape
 
