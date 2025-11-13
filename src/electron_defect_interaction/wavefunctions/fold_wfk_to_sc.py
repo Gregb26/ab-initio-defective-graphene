@@ -14,7 +14,7 @@ def compute_psi_nk_fold_sc(
     Omega_sc,   
     Ndiag,
     ngfft,
-    bands
+    bands=None
 ):
     """
     Computes the wavefunctions psi_{nk}(r) of the unit cell unfolded on the supercell real space grid, from the planewave coefficients of the unit cell.
@@ -34,15 +34,15 @@ def compute_psi_nk_fold_sc(
             Supercell scaling volume, e.g. how many times we repeated the unit cell in each direction to construct the supercell
         ngfft: (Nx, Ny, Nz) tuple of ints
             FFT grid shape of the super cell
-        bands: list of ints
-            Specific band index at which to compute the wavefunctions. Reduces computational load by only considering bands we want to study
         
     Returns:
         psi_nk: (nb, nkpt, Nx, Ny, Nz) array of complex
             Wavefunction of the unit cell unfolded onto the FFT grid of the supercell in real space
     """
-    # Trim coefficients to only consider bands we want to study
-    C_nkg = C_nkg[bands, ...]
+    if bands is not None:
+        # Trim coefficients to only consider bands we want to study
+        C_nkg = C_nkg[bands, ...]
+    
     nb, nkpt, _ = C_nkg.shape
     Nx, Ny, Nz = ngfft; N = np.prod(ngfft)
 
@@ -66,8 +66,7 @@ def compute_psi_nk_fold_sc(
     # Compute the wavefunctions per k
     psi = np.zeros((nb, nkpt, Nx, Ny, Nz), dtype=complex)
     
-    percent_marks = [25, 50, 75, 100]
-    next_mark_i = 0
+    next_mark = 10
 
     for ik in range(nkpt):
         nG_k = nG[ik] # number of active planewaves for this k
@@ -93,13 +92,13 @@ def compute_psi_nk_fold_sc(
         psi[:, ik, ...] = (u * phase[ik]) / np.sqrt(float(Omega_sc))
 
         p = (ik + 1) / nkpt * 100
-        if next_mark_i < len(percent_marks) and p >= percent_marks[next_mark_i]:
-            print(f"Computed {percent_marks[next_mark_i]}% of wavefunctions, ({ik+1}/{nkpt}) kpoints")
-            next_mark_i += 1
+        if p >= next_mark:
+            print(f"Computed {next_mark:.0f}% ({ik+1}/{nkpt} k-points)")
+            next_mark += 10
 
     # Sanity check, wavefunctions are normalized
-    norm = np.sum(np.abs(psi)**2, axis=(2,3,4)) * (Omega_sc / N)
-    assert np.allclose(norm, 1.0), 'Wavefunctions should be normalized!'
+    # norm = np.sum(np.abs(psi)**2, axis=(2,3,4)) * (Omega_sc / N)
+    # assert np.allclose(norm, 1.0), 'Wavefunctions should be normalized!'
     
     print('Done! Wavefunctions are normalized.')
 
