@@ -269,7 +269,7 @@ def get_eigenvalues(filepath, shift_Fermi=False):
 
     return eigenvalues
 
-def get_kpt_red(filepath):
+def get_k_red(filepath):
     """
     Function that extracts the kpoint grid in reduced coordinates from Abinit's output files.
 

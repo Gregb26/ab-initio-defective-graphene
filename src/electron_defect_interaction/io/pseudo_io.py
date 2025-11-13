@@ -41,7 +41,7 @@ def read_psp8(path):
         return float(s.replace("D", "E"))
 
     from pathlib import Path
-    
+
     with Path(path).open("r") as f:
         # Extracting useful info from header
         title = f.readline()
@@ -82,7 +82,7 @@ def read_psp8(path):
 
         # TODO    
 
-    return ekb_li, fr_li, rgrid, lmax, imax
+    return ekb_li, fr_li, rgrid
 
 def fq_from_fr(r, fr_li, q):
     """
@@ -94,7 +94,7 @@ def fq_from_fr(r, fr_li, q):
             Grid in real space
         fr_li: (lmax+1, imax, mmax) array of floats
             Radial form factors on a 1d grid of size mmax in real space.
-        q: (mqff) array of floatsL:
+        q: (mqff) array of floats:
             1d grid in recirprocal space. qmax is chosen such that qmax = 2*sqrt(2*ecut) to make sure to resolve all K=|k+G| vectors
         
     Returns:
