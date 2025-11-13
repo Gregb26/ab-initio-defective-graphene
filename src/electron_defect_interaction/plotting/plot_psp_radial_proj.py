@@ -3,7 +3,7 @@ plot_psp_radial_proj.py
     Python module that plots the radial projectors of the nonlocal part of the pseudopotentials.
 
     TODO
-        - make plots taht are nicer to look at 
+        - make plots that are nicer to look at 
 """
 
 import matplotlib.pyplot as plt
@@ -23,21 +23,22 @@ def plot_radial_form_factors(rgrid, fr_li, space='real', qgrid=None):
     """
 
     if space == 'real':
+  
         f = fr_li
         grid = rgrid
     
-    if space == 'reciprocal':
+    elif space == 'reciprocal':
         from electron_defect_interaction.io.pseudo_io import fq_from_fr
 
         if qgrid is None:
             raise TypeError('Must specify qgrid to plot in reciprocal space')
 
         f = fq_from_fr(rgrid, fr_li, qgrid)
-        print(f.shape)
+
         grid = qgrid
     
     else:
-        raise ValueError("Unsupported space. Valid entries are 'real' and 'recirpocal'.")
+        raise ValueError("Unsupported space. Valid entries are 'real' and 'reciprocal'.")
 
     for l in range(f.shape[0]):
         for i in range(f.shape[1]):
