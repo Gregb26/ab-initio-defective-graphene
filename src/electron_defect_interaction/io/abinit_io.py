@@ -34,7 +34,7 @@ def get_C_nk(filepath):
     # Read file with netCDF4
     with Dataset(filepath, 'r') as nc:
         nc.set_auto_mask(False)
-        var = nc["coefficients_of_wavefunctions"][:] # shape (nspin, nkpt, nband, npw_k, nsppol, 2)
+        var = nc["coefficients_of_wavefunctions"][:] # shape (nspin, nkpt, nband, nG_max, 2)
         npw = np.array(nc["number_of_coefficients"][:],dtype=int)
       
     # Unmask
@@ -43,8 +43,8 @@ def get_C_nk(filepath):
     arr = np.asarray(var)
 
     # Squeeze singleton spin/spinor axes
-    arr = arr[0,:,:,:,0,:]
-
+    arr = arr[0,:,:,0,:,:]
+    
     # Extract real and imaginary parts of the coefficients
     real = arr[..., 0]
     imag = arr[..., 1]
