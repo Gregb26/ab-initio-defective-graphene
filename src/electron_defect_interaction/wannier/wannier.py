@@ -28,7 +28,7 @@ def wannier_gauge_transform(Mb, U, U_dis=None):
         V = np.zeros((nkpt, nband, nwann), dtype=complex)
         for ik in range(nkpt):
 
-            V[ik] = U_dis[ik] @ U[ik] # (nkpt, nwann, nwann)
+            V[ik] = U_dis[ik] @ U[ik] # (nkpt, nb, nw)
 
             # testing
             with np.errstate(all='ignore'):

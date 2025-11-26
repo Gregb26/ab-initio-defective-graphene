@@ -43,7 +43,7 @@ def get_C_nk(filepath):
     arr = np.asarray(var)
 
     # Squeeze singleton spin/spinor axes
-    arr = np.squeeze(arr) # shape (nkpt, nband, npw_k, 2)
+    arr = arr[0,:,:,:,0,:]
 
     # Extract real and imaginary parts of the coefficients
     real = arr[..., 0]
