@@ -1,7 +1,7 @@
 """
 local_R.py
     Python module to compute the local part of the electron-defect scattering matrix by directly evaluating the 
-    integral in real space. Surprinsgly fast.
+    integral in real space. Surprisingly fast.
 """
 
 import numpy as np
@@ -78,7 +78,7 @@ def compute_M_L_r(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, bands,
 
     return M_L
 
-def compute_M_L_r_BLAAS(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, subtract_mean=True):
+def compute_M_L_r_BLAAS(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, subtract_mean=True, pristine=False):
     """
     Computes the local part of the electron-defect interaction matrix in real space.
 
@@ -86,7 +86,7 @@ def compute_M_L_r_BLAAS(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, 
         uc_wfk_path: str
             Path to the ABINIT WFK.nc output file for the wavefunctions of the unit cell
         sc_wfk_path:
-            Path to the ABINIT WFK.nc output file for the wavefucntions of the pristine super cell
+            Path to the ABINIT WFK.nc output file for the wavefunctions of the pristine super cell
         sc_p_pot_path: str
             Path to the ABINIT POT.nc output file for the local potential of the pristine super cell
         sc_d_pot_path: str
@@ -109,7 +109,10 @@ def compute_M_L_r_BLAAS(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, 
     ngfft = Vp.shape # FFT grid shape
 
     # Compute defect potential
-    Ved = Vd - Vp
+    if pristine:
+        Ved = Vp
+    else:
+        Ved = Vd - Vp
 
     # Supercell scaling factor
     Ndiag = tuple(np.diag(np.rint(A_sc @ np.linalg.pinv(A_uc))))
@@ -121,7 +124,7 @@ def compute_M_L_r_BLAAS(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, 
     R = np.prod(ngfft)
 
     psi_r = psi.reshape(nband, nkpt, R) # (nband, nkpt, R)
-    Ved_r = Vp.reshape(R) # (R,)
+    Ved_r = Ved.reshape(R) # (R,)
     Bk = nband * nkpt
     dV = Omega_sc / np.prod(ngfft)
     Psi = np.ascontiguousarray(psi_r.reshape(Bk, R)) # (Bk, R)
@@ -140,5 +143,6 @@ def compute_M_L_r_BLAAS(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, 
         return M
     with np.errstate(all='ignore'):
         M_L = accumulate_M(Psi, Ved_r, dV)
-
+    
+    print('Done!')
     return M_L.reshape(nband, nkpt, nband, nkpt).transpose(2,1,0,3)
