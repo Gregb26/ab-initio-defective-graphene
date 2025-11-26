@@ -6,13 +6,15 @@ wfk.py
 
 import numpy as np
 from electron_defect_interaction.utils.fft_utils import map_G_to_fft_grid, fft_grid_from_G_red
+from tqdm import tqdm
 
 def compute_psi_nk(
     C_nkg,  
     nG,       
     G_red,       
     k_red,  
-    Omega,     
+    Omega,
+    check_normalize=False     
 ):
     """
     Computes the wavefunction psi_{nk}(r) on a uniform grid in real space consistent with the number of G vectors, from
@@ -30,6 +32,8 @@ def compute_psi_nk(
             k-points in reduced coordinates
         Omega: float
             Cell volume
+        check_normalize: Bool
+            If True: computes norm and check that is unity. Default is False.
         
     Returns:
         psi_nk: (nband, nkpt, Nx, Ny, Nz) array of complex
@@ -51,23 +55,17 @@ def compute_psi_nk(
 
     # Build mapping from G_red = (Gx, Gy, Gz) to FFT grid index (jx, jy, jz) to place coefficients on FFT grid
     map_dict_x, map_dict_y, map_dict_z = map_G_to_fft_grid(ngfft)
-
-    # Precompute phase per k
-    phase = []
-    for ik in range(nkpt):
-        k = k_red[ik]
-        phase_k = np.exp(1j * 2*np.pi*(k[0]*xx + k[1]*yy + k[2]*zz))
-        phase.append(phase_k)
     
     # Compute the wavefunctions per k
     psi = np.zeros((nband, nkpt, Nx, Ny, Nz), dtype=complex)
-    
-    percent_marks = [10, 20, 30, 40, 50, 60, 70, 80, 90]
-    next_mark_i = 0
 
-    for ik in range(nkpt):
+    for ik in tqdm(range(nkpt)):
         nG_k = nG[ik] # number of active planewaves for this k
         Gk = G_red[ik, :nG_k, :] # (npw_k, 3) reciprocal lattice vectors for this k
+
+        # Compute phase per k
+        k = k_red[ik]
+        phase_k = np.exp(1j * 2*np.pi*(k[0]*xx + k[1]*yy + k[2]*zz))
 
         # Use mapping dictionaries to get FFT grid indices
         ix = np.array([map_dict_x[int(Gk_i)] for Gk_i in Gk[:, 0]])
@@ -84,16 +82,11 @@ def compute_psi_nk(
         u = np.fft.ifftn(C_grid, axes=(1,2,3)) * N # (nband, Nx, Ny, Nz), N undoes the normalization introduced by Numpys IFFT
         
         # Compute psi = u * exp(ik.r) / sqrt(Omega)
-        psi[:, ik, ...] = (u * phase[ik]) / np.sqrt(Omega)
+        psi[:, ik, ...] = (u * phase_k) / np.sqrt(Omega)
 
-        p = (ik + 1) / nkpt * 100
-        if next_mark_i < len(percent_marks) and p >= percent_marks[next_mark_i]:
-            print(f"Computed {percent_marks[next_mark_i]}% of wavefunctions, ({ik+1}/{nkpt}) kpoints")
-            next_mark_i += 1
-
-    # Sanity check, wavefunctions are nornmalized
-    norm = np.sum(np.abs(psi)**2, axis=(2,3,4)) * (Omega / N)
-    assert np.allclose(norm, 1.0), 'Wavefunctions should be normalized!'
+    if check_normalize:
+        norm = np.sum(np.abs(psi)**2, axis=(2,3,4)) * (Omega / N)
+        assert np.allclose(norm, 1.0), 'Wavefunctions should be normalized!'
 
     print('Done! Wavefunctions are normalized.')
 
