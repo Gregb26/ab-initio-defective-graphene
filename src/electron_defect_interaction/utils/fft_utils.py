@@ -97,8 +97,8 @@ def fft_grid_from_G_red(G_red, nG, primes=(2, 3, 5)):
     G_red = np.where(keep[..., np.newaxis], G_red, 0.0) # set invalid G's to zero to get correct min and max values
 
     # Round up Gmax components to nearest integer
-    Gmax = np.max(G_red, axis=(0,1)); print('max', Gmax)
-    Gmin = np.min(G_red, axis=(0,1)); print('min', Gmin)
+    Gmax = np.max(G_red, axis=(0,1))
+    Gmin = np.min(G_red, axis=(0,1))
 
     # Nyquist requires at least Gmax - Gmin + 1 points to place G on a grid without aliasing
     dG = Gmax - Gmin
