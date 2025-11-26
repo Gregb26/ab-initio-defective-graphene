@@ -143,6 +143,6 @@ def compute_M_L_r_BLAAS(uc_wfk_path, sc_wfk_path, sc_p_pot_path, sc_d_pot_path, 
         return M
     with np.errstate(all='ignore'):
         M_L = accumulate_M(Psi, Ved_r, dV)
-    
     print('Done!')
+    
     return M_L.reshape(nband, nkpt, nband, nkpt).transpose(2,1,0,3)
