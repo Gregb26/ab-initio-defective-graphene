@@ -22,3 +22,5 @@ dist/
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/
 
+# Virtual environment
+.venv
