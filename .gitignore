@@ -13,6 +13,7 @@ __pycache__/
 data/
 jobs/
 notebooks/
+results/
 
 # Build outputs
 build/
