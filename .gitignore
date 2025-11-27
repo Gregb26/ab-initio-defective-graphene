@@ -9,13 +9,10 @@ __pycache__/
 .idea/
 .vscode/
 
-# NumPy / scientific data dumps
-*.npy
-*.npz
-*.nc
-
-# Simulation / experiment data (entire folder in repo root)
+# Folders
 data/
+jobs/
+notebook/
 
 # Build outputs
 build/
