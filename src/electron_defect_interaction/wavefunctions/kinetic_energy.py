@@ -1,6 +1,8 @@
 """
 kinetic_energy.py
     Python module that computes the kinetic energy of the wavefunctions given its planewave coefficients.
+
+    TODO: do not assume diagonal in n ... 
 """
 
 from electron_defect_interaction.io.abinit_io import *
